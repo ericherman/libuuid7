@@ -1,0 +1,32 @@
+Experimenting with a sortable UUID format.
+
+This draft:
+ https://www.ietf.org/archive/id/draft-peabody-dispatch-new-uuid-format-04.html
+
+Seems to differ slightly from the python docs:
+ https://pypi.org/project/uuid7/
+
+This roughly follows the python docs.
+
+
+Usage
+-----
+
+	uint8_t uuid_bytes[16];
+
+	uuid7(uuid_bytes);
+
+	char buf[37];
+
+	printf("uuid: %s\n", uuid7_to_string(buf, sizeof(buf), uuid_bytes));
+
+
+To do
+-----
+
+At the moment, it is not thread-safe.
+
+License
+-------
+GNU Lesser General Public License (LGPL), version 2.1 or later.
+See COPYING for details.
