@@ -83,29 +83,49 @@ int main(int argc, char **argv)
 		printf("clockid fd: %d\n", clockid_to_fd(clockid));
 	}
 
-	printf("Checking the clock\n");
-	struct timespec ts[10];
-	struct timespec *ts0 = &ts[0];
-	if (clock_getres(clockid, ts0)) {
+	const size_t ts_len = 2 * 1000 * 1000;
+	size_t ts_size = sizeof(struct timespec) * ts_len;
+	struct timespec *ts = malloc(ts_size);
+	if (!ts) {
+		Die("failed to allocate %zu bytes?", ts_size);
+	}
+	printf("Checking the clock ...");
+	if (clock_getres(clockid, &ts[0])) {
 		Die("clock_getres(%ld, &ts)", (long)clockid);
 	}
+	printf(" done.\n");
 
-	printf("    resolution:  %jd.%09ld\n", (intmax_t) ts0->tv_sec,
-	       ts0->tv_nsec);
+	printf("    resolution:  %jd.%09ld\n", (intmax_t) ts[0].tv_sec,
+	       ts[0].tv_nsec);
 
-	printf("calling clock_gettime in a tight loop\n");
-	for (size_t i = 0; i < 10; ++i) {
+	printf("Calling clock_gettime in a tight loop %zu times ...", ts_len);
+	for (size_t i = 0; i < ts_len; ++i) {
 		if (clock_gettime(clockid, &ts[i])) {
 			Die("clock_gettime(%ld, &ts)", (long)clockid);
 		}
 	}
-	printf("results:\n");
+	printf(" done.\n");
+	size_t duplicates = 0;
+	for (size_t i = 1; i < ts_len; ++i) {
+		if ((ts[i - 1].tv_sec == ts[i].tv_sec)
+		    && (ts[i - 1].tv_nsec == ts[i].tv_nsec)) {
+			++duplicates;
+		}
+	}
+	printf("\tfor %zu calls to clock_gettime, %zu duplicates were found\n",
+	       ts_len, duplicates);
+	if (duplicates) {
+		printf("\t(sequence may not always be zero)\n");
+	} else {
+		printf("\t(sequence will probably always be zero)\n");
+	}
+	printf("First 10 results:\n");
 	for (size_t i = 0; i < 10; ++i) {
 		printf("\t%10jd.%09ld\n", (intmax_t) ts[i].tv_sec,
 		       ts[i].tv_nsec);
 	}
 
-	printf("\n\ngetting UUIDs:\n");
+	printf("\n\nGetting UUIDs ...");
 #ifndef UUID7_SKIP_MUTEX
 	uuid7_mutex_init();
 #endif
@@ -120,7 +140,8 @@ int main(int argc, char **argv)
 	for (size_t i = 5; i < 10; ++i) {
 		uuid7(uuid7s[i]);
 	}
-	printf("printing UUIDs:\n");
+	printf(" done.\n");
+	printf("Printing UUIDs:\n");
 	for (size_t i = 0; i < 10; ++i) {
 		char buf1[80];
 		uuid7_to_string(buf1, 80, uuid7s[i]);
@@ -136,6 +157,7 @@ int main(int argc, char **argv)
 #ifndef UUID7_SKIP_MUTEX
 	uuid7_mutex_destroy();
 #endif
+	free(ts);
 
 	return 0;
 }
