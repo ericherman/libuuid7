@@ -12,14 +12,13 @@ CFLAGS += -g -Wall -Wextra -Wpedantic -Werror -pipe
 
 uuid7.c: uuid7.h
 
-demo: uuid7.c demo.c
-	cc -g -Wall -Wextra -Wpedantic -Werror -pipe \
-		uuid7.c demo.c \
-		-o demo
+build/demo: uuid7.c demo.c
+	mkdir -pv build
+	cc $(CFLAGS) uuid7.c demo.c -o build/demo
 
 .PHONY: run_demo
-run_demo: demo
-	./demo
+run_demo: build/demo
+	build/demo
 
 .PHONY: tidy
 tidy:
@@ -34,4 +33,4 @@ tidy:
 
 .PHONY: clean
 clean:
-	rm -rf *.o demo *~
+	rm -rf *.o build *~
