@@ -106,6 +106,9 @@ int main(int argc, char **argv)
 	}
 
 	printf("\n\ngetting UUIDs:\n");
+#ifndef UUID7_SKIP_MUTEX
+	uuid7_mutex_init();
+#endif
 
 	uint8_t uuid7s[10][16];
 	memset(uuid7s, 0x00, 10 * 16);
@@ -129,6 +132,10 @@ int main(int argc, char **argv)
 		uuid7_decode(buf2, 80, uuid7s[i]);
 		printf("%zu: %s\n", i, buf2);
 	}
+
+#ifndef UUID7_SKIP_MUTEX
+	uuid7_mutex_destroy();
+#endif
 
 	return 0;
 }

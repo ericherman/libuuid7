@@ -21,6 +21,13 @@
 #endif
 const clockid_t uuid7_clockid = UUID7_CLOCKID;
 
+#ifndef UUID7_SKIP_MUTEX
+#include <stdbool.h>
+#include <threads.h>
+static bool uuid7_mutex_initd = false;
+static mtx_t uuid7_mutex;
+#endif
+
 static uint8_t uuid7_last[16] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
@@ -42,6 +49,7 @@ uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 		    uint8_t *last_issued)
 {
 	assert(ubuf);
+	int success = 0;
 
 	/*
 	   With only 24 bits of the fraction second,
@@ -65,6 +73,12 @@ uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 	tmp.sequence = 0;
 	tmp.rand = (random_bytes & 0x0000FFFFFFFFFFFF);
 
+#ifndef UUID7_SKIP_MUTEX
+	if (uuid7_mutex_initd) {
+		mtx_lock(&uuid7_mutex);
+	}
+#endif
+
 	/* the first 8 bytes contain the seconds and the fraction */
 	static_assert((8 * 8) == (36 + 12 + 4 + 12));
 	if (memcmp(last_issued, &tmp.bytes, 8) == 0) {
@@ -78,13 +92,27 @@ uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 			   more than 16383 in the same 50 nanoseconds
 			   suggests something is wrong with th3 clockid
 			 */
-			return NULL;
+			goto uuid7_next_end;
 		}
 		++seq;
 		tmp.sequence = seq;
 	}
 
 	if (!memcpy(last_issued, tmp.bytes, 16)) {
+		goto uuid7_next_end;
+	}
+
+	success = 1;
+
+uuid7_next_end:
+
+#ifndef UUID7_SKIP_MUTEX
+	if (uuid7_mutex_initd) {
+		mtx_unlock(&uuid7_mutex);
+	}
+#endif
+
+	if (!success) {
 		return NULL;
 	}
 
@@ -147,3 +175,20 @@ char *uuid7_to_string(char *buf, size_t buflen, const uint8_t *bytes)
 	}
 	return buf;
 }
+
+#ifndef UUID7_SKIP_MUTEX
+int uuid7_mutex_init(void)
+{
+	int rv = mtx_init(&uuid7_mutex, mtx_plain);
+	if (rv == thrd_success) {
+		uuid7_mutex_initd = true;
+	}
+	return rv;
+}
+
+void uuid7_mutex_destroy(void)
+{
+	mtx_destroy(&uuid7_mutex);
+	uuid7_mutex_initd = false;
+}
+#endif

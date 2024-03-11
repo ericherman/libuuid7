@@ -20,11 +20,27 @@ Usage
 
 	printf("uuid: %s\n", uuid7_to_string(buf, sizeof(buf), uuid_bytes));
 
+Threads
+-------
 
-To do
------
+In order to provide the sequence number for a UUID, the last time and last
+sequence are stored in a global variable.
 
-At the moment, it is not thread-safe.
+In a multi-threaded program, it's important to ensure that these values are
+accessed in a thread-safe fashion.
+
+Unless compiled with -DUUID7_SKIP_MUTEX, thread-safety can be achieved by
+first calling:
+
+	uuid7_mutex_init();
+
+After that, any calls to uuid7 will be thread-safe.
+
+The mutex destructor is:
+
+	 uuid7_mutex_destroy();
+
+In a single threaded environment, these may be skipped.
 
 License
 -------
