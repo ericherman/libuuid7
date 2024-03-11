@@ -49,13 +49,14 @@ uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 		    uint8_t *last_issued)
 {
 	assert(ubuf);
+	assert(ts.tv_nsec >= 0 && ts.tv_nsec <= 999999999);
 	int success = 0;
 
 	/*
 	   With only 24 bits of the fraction second,
 	   wanted are the 24 most significant bits,
 	   which might not be zero.
-	   Valid values are 0 to 999999 or:
+	   Valid values are 0 to 999999999 or:
 	   const uint32_t nine9s = 0x3B9AC9FF;
 	   Because the bits 31 and 30 are never set,
 	   only bits 0-29, the bits to extract are 6 through 29:
