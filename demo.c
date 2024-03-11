@@ -119,36 +119,39 @@ int main(int argc, char **argv)
 	} else {
 		printf("\t(sequence will probably always be zero)\n");
 	}
-	printf("First 10 results:\n");
-	for (size_t i = 0; i < 10; ++i) {
+	size_t subset = 10;
+	printf("First %zu results:\n", subset);
+	for (size_t i = 0; i < subset; ++i) {
 		printf("\t%10jd.%09ld\n", (intmax_t) ts[i].tv_sec,
 		       ts[i].tv_nsec);
 	}
 
-	printf("\n\nGetting UUIDs ...");
+	uint8_t uuid7s[8][16];
+	size_t uuids_len = 8;
+	memset(uuid7s, 0x00, uuids_len * 16);
+
+	printf("\n\nGenerating %zu UUIDs ...", uuids_len);
 #ifndef UUID7_SKIP_MUTEX
 	uuid7_mutex_init();
 #endif
 
-	uint8_t uuid7s[10][16];
-	memset(uuid7s, 0x00, 10 * 16);
 	for (size_t i = 0; i < 5; ++i) {
 		uuid7(uuid7s[i]);
 	}
 	struct timespec snooze = { 0, 100 };
 	nanosleep(&snooze, NULL);
-	for (size_t i = 5; i < 10; ++i) {
+	for (size_t i = 5; i < uuids_len; ++i) {
 		uuid7(uuid7s[i]);
 	}
 	printf(" done.\n");
 	printf("Printing UUIDs:\n");
-	for (size_t i = 0; i < 10; ++i) {
+	for (size_t i = 0; i < uuids_len; ++i) {
 		char buf1[80];
 		uuid7_to_string(buf1, 80, uuid7s[i]);
 		printf("%zu: %s\n", i, buf1);
 	}
-	printf("\ndecoding UUIDs:\n");
-	for (size_t i = 0; i < 10; ++i) {
+	printf("\nDecoding UUIDs:\n");
+	for (size_t i = 0; i < uuids_len; ++i) {
 		char buf2[80];
 		uuid7_decode(buf2, 80, uuid7s[i]);
 		printf("%zu: %s\n", i, buf2);
