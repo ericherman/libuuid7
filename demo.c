@@ -19,7 +19,7 @@ char *uuid7_decode(char *buf, size_t buflen, const uint8_t *bytes)
 
 	const char *fmt =
 	    "%" PRIu64 ".%" PRIu32 " [%" PRIu16 "] (%" PRIu8 ",%" PRIu8
-	    ") %012x";
+	    ") %012" PRIx64;
 
 	snprintf(buf, buflen, fmt, tmp.seconds, nanos, tmp.sequence,
 		 tmp.uuid_ver, tmp.uuid_var, tmp.rand);
