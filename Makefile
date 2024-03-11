@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # Copyright (C) 2024 Eric Herman <eric@freesa.org>
 
-default: demo
+default: run_demo
 
 SHELL=/bin/bash
 
@@ -16,6 +16,9 @@ demo: uuid7.c demo.c
 	cc -g -Wall -Wextra -Wpedantic -Werror -pipe \
 		uuid7.c demo.c \
 		-o demo
+
+.PHONY: run_demo
+run_demo: demo
 	./demo
 
 .PHONY: tidy
