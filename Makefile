@@ -22,6 +22,7 @@ run_demo: build/demo
 
 .PHONY: tidy
 tidy:
+	patch -Np1 -i misc/workaround-indent-bug-65165.patch
 	$(LINDENT) \
 		-T FILE \
 		-T size_t -T ssize_t \
@@ -30,6 +31,7 @@ tidy:
 		-T uint32_t -T int32_t \
 		-T uint64_t -T int64_t \
 		*.h *.c
+	patch -Rp1 -i misc/workaround-indent-bug-65165.patch
 
 .PHONY: clean
 clean:

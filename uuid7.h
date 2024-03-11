@@ -4,6 +4,10 @@
 #ifndef UUID7_H
 #define UUID7_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <stdint.h>
 #include <stddef.h>
 
@@ -31,4 +35,8 @@ union uuid7 {
 
 extern const uint8_t uuid7_version;
 extern const uint8_t uuid7_variant;
+
+#ifdef __cplusplus
+}
+#endif
 #endif

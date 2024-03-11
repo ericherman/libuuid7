@@ -1,0 +1,29 @@
+Dumb work-around for GNU indent extern C bug
+
+bug #65165: extern "C" mishandled in header files
+https://savannah.gnu.org/bugs/index.php?65165
+
+--- trigger-bug/uuid7.h	2024-03-11 12:16:46.455936604 +0100
++++ work-around/uuid7.h	2024-03-11 12:17:27.683899801 +0100
+@@ -4,9 +4,11 @@
+ #ifndef UUID7_H
+ #define UUID7_H
+ 
++/*
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
++*/
+ 
+ #include <stdint.h>
+ #include <stddef.h>
+@@ -36,7 +38,9 @@
+ extern const uint8_t uuid7_version;
+ extern const uint8_t uuid7_variant;
+ 
++/*
+ #ifdef __cplusplus
+ }
+ #endif
++*/
+ #endif
