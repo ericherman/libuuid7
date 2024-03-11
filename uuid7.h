@@ -8,7 +8,7 @@
 #include <stddef.h>
 
 uint8_t *uuid7(uint8_t *ubuf);
-char *uuid7_to_string(char *buf, size_t buflen, const uint8_t *bytes);
+char *uuid7_to_string(char *buf, size_t buf_size, const uint8_t *bytes);
 
 #ifndef UUID7_SKIP_MUTEX
 int uuid7_mutex_init(void);

@@ -151,10 +151,10 @@ static char uuid7_nibble_to_hex(uint8_t nib)
 }
 
 /* 8-4-4-4-12 */
-char *uuid7_to_string(char *buf, size_t buflen, const uint8_t *bytes)
+char *uuid7_to_string(char *buf, size_t buf_size, const uint8_t *bytes)
 {
 	const size_t uuid_str_size = ((16 * 2) + 4) + 1;
-	if (buflen < uuid_str_size) {
+	if (buf_size < uuid_str_size) {
 		return NULL;
 	}
 	size_t pos = 0;
