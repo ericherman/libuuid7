@@ -63,6 +63,13 @@ static int clockid_to_fd(clockid_t clk)
 
 extern const clockid_t uuid7_clockid;
 
+static long double elapsed_ts(struct timespec from, struct timespec to) {
+	long double from_seconds = from.tv_sec + (from.tv_nsec / 1000000000.0);
+	long double to_seconds = to.tv_sec + (to.tv_nsec / 1000000000.0);
+	long double elapsed = (to_seconds - from_seconds);
+	return elapsed;
+}
+
 #include <fcntl.h>
 int main(int argc, char **argv)
 {
@@ -85,7 +92,7 @@ int main(int argc, char **argv)
 
 	const size_t ts_len = 2 * 1000 * 1000;
 	size_t ts_size = sizeof(struct timespec) * ts_len;
-	struct timespec *ts = malloc(ts_size);
+	struct timespec *ts = (struct timespec *)malloc(ts_size);
 	if (!ts) {
 		Die("failed to allocate %zu bytes?", ts_size);
 	}
@@ -99,12 +106,20 @@ int main(int argc, char **argv)
 	       ts[0].tv_nsec);
 
 	printf("Calling clock_gettime in a tight loop %zu times ...", ts_len);
+	struct timespec ts_begin;
+	struct timespec ts_final;
+
+	clock_gettime(clockid, &ts_begin);
 	for (size_t i = 0; i < ts_len; ++i) {
 		if (clock_gettime(clockid, &ts[i])) {
 			Die("clock_gettime(%ld, &ts)", (long)clockid);
 		}
 	}
-	printf(" done.\n");
+	clock_gettime(clockid, &ts_final);
+	long double elapsed = elapsed_ts(ts_begin, ts_final);
+	long double percall = (elapsed / ts_len);
+	printf(" done in %.9LF seconds (~%.9LF per).\n", elapsed, percall);
+
 	size_t duplicates = 0;
 	for (size_t i = 1; i < ts_len; ++i) {
 		if ((ts[i - 1].tv_sec == ts[i].tv_sec)
@@ -119,6 +134,7 @@ int main(int argc, char **argv)
 	} else {
 		printf("\t(sequence will probably always be zero)\n");
 	}
+
 	size_t subset = 10;
 	printf("First %zu results:\n", subset);
 	for (size_t i = 0; i < subset; ++i) {
@@ -126,8 +142,8 @@ int main(int argc, char **argv)
 		       ts[i].tv_nsec);
 	}
 
-	uint8_t uuid7s[8][16];
-	size_t uuids_len = 8;
+	size_t uuids_len = 100;
+	uint8_t uuid7s[100][16];
 	memset(uuid7s, 0x00, uuids_len * 16);
 
 	printf("\n\nGenerating %zu UUIDs ...", uuids_len);
@@ -135,23 +151,35 @@ int main(int argc, char **argv)
 	uuid7_mutex_init();
 #endif
 
+	clock_gettime(clockid, &ts_begin);
 	for (size_t i = 0; i < 5; ++i) {
 		uuid7(uuid7s[i]);
 	}
+	clock_gettime(clockid, &ts_final);
+	long double elapsed1 = elapsed_ts(ts_begin, ts_final);
+
 	struct timespec snooze = { 0, 100 };
 	nanosleep(&snooze, NULL);
+
+	clock_gettime(clockid, &ts_begin);
 	for (size_t i = 5; i < uuids_len; ++i) {
 		uuid7(uuid7s[i]);
 	}
-	printf(" done.\n");
-	printf("Printing UUIDs:\n");
-	for (size_t i = 0; i < uuids_len; ++i) {
+	clock_gettime(clockid, &ts_final);
+	long double elapsed2 = elapsed_ts(ts_begin, ts_final);
+
+	elapsed = (elapsed1 + elapsed2);
+	percall = (elapsed / uuids_len);
+	printf(" done in %.9LF seconds (~%.9LF per).\n", elapsed, percall);
+
+	printf("Printing the first 8 UUIDs:\n");
+	for (size_t i = 0; i < 8; ++i) {
 		char buf1[80];
 		uuid7_to_string(buf1, 80, uuid7s[i]);
 		printf("%zu: %s\n", i, buf1);
 	}
-	printf("\nDecoding UUIDs:\n");
-	for (size_t i = 0; i < uuids_len; ++i) {
+	printf("\nDecoding the first 8 UUIDs:\n");
+	for (size_t i = 0; i < 8; ++i) {
 		char buf2[80];
 		uuid7_decode(buf2, 80, uuid7s[i]);
 		printf("%zu: %s\n", i, buf2);
