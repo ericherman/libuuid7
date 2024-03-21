@@ -13,8 +13,10 @@
 
 char *uuid7_decode(char *buf, size_t buflen, const uint8_t *bytes)
 {
-	union uuid7 tmp;
-	memcpy(tmp.bytes, bytes, 16);
+	struct uuid7 tmp;
+
+	uuid7_parts(&tmp, bytes);
+
 	uint32_t nanos = (((uint32_t)tmp.hifrac) << 12) | tmp.lofrac;
 
 	const char *fmt =
@@ -63,12 +65,9 @@ static int clockid_to_fd(clockid_t clk)
 
 extern const clockid_t uuid7_clockid;
 
-static long double elapsed_ts(struct timespec from, struct timespec to) {
-	long double from_seconds = from.tv_sec + (from.tv_nsec / 1000000000.0);
-	long double to_seconds = to.tv_sec + (to.tv_nsec / 1000000000.0);
-	long double elapsed = (to_seconds - from_seconds);
-	return elapsed;
-}
+#define elapsed_ts(begin, until) \
+	( (until.tv_sec + (until.tv_nsec / (long double)1000000000.0)) \
+	- (begin.tv_sec + (begin.tv_nsec / (long double)1000000000.0)) )
 
 #include <fcntl.h>
 int main(int argc, char **argv)

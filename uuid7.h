@@ -12,6 +12,7 @@ extern "C" {
 #include <stddef.h>
 
 uint8_t *uuid7(uint8_t *ubuf);
+
 char *uuid7_to_string(char *buf, size_t buf_size, const uint8_t *bytes);
 
 #ifndef UUID7_SKIP_MUTEX
@@ -19,19 +20,16 @@ int uuid7_mutex_init(void);
 void uuid7_mutex_destroy(void);
 #endif
 
-/* this union is for illustration, but it is not required for the API */
-union uuid7 {
-	uint8_t bytes[16];
-	struct {
-		uint64_t seconds:36;
-		uint16_t hifrac:12;
-		uint8_t uuid_ver:4;
-		uint16_t lofrac:12;
-		uint8_t uuid_var:2;
-		uint16_t sequence:14;
-		uint64_t rand:48;
-	};
+struct uuid7 {
+	uint64_t seconds:36;
+	uint16_t hifrac:12;
+	uint8_t uuid_ver:4;
+	uint16_t lofrac:12;
+	uint8_t uuid_var:2;
+	uint16_t sequence:14;
+	uint64_t rand:48;
 };
+struct uuid7 *uuid7_parts(struct uuid7 *u, const uint8_t *bytes);
 
 extern const uint8_t uuid7_version;
 extern const uint8_t uuid7_variant;

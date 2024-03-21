@@ -3,45 +3,96 @@
 
 default: run-demo
 
-SHELL=/bin/bash
+# $@ : target label
+# $< : the first prerequisite after the colon
+# $^ : all of the prerequisite files
+# $* : wildcard matched part
 
-# extracted from https://github.com/torvalds/linux/blob/master/scripts/Lindent
-LINDENT=indent -npro -kr -i8 -ts8 -sob -l80 -ss -ncs -cp1 -il0
+# |  : order-only prerequisites
+#  https://www.gnu.org/software/make/manual/html_node/Prerequisite-Types.html
+
+# dir, notdir :
+#  https://www.gnu.org/software/make/manual/html_node/File-Name-Functions.html
+
+CC ?= gcc
+BROWSER	?= firefox
+
+# pushd, popd are bash-ism
+SHELL := /bin/bash
 
 CFLAGS_NOISY := -Wall -Wextra -Wpedantic -Wcast-qual -Wc++-compat \
 		$(CFLAGS) -pipe
 
 CFLAGS_DEBUG := -g -O0 $(CFLAGS_NOISY) -Werror \
-        -fno-inline-small-functions \
-        -fkeep-inline-functions \
-        -fkeep-static-functions
+	 -fno-inline-small-functions \
+	 -fkeep-inline-functions \
+	 -fkeep-static-functions
 
-#        -fprofile-arcs \
-#        -ftest-coverage \
-#        --coverage \
+CFLAGS_COVERAGE := $(CFLAGS_DEBUG) \
+	 -fprofile-arcs \
+	 -ftest-coverage
 
-# LDFLAGS_DEBUG := --coverage
+LDFLAGS_COVERAGE := --coverage
+LDADD_COVERAGE := -lgcov
 
 CFLAGS_BUILD := -g -O2 -DNDEBUG $(CFLAGS_NOISY)
-# LDFLAGS_BUILD :=
-
-DEBUG ?= 0
-
-ifeq ($(shell test $(DEBUG) -gt 0; echo $$?),0)
-CFLAGS_DEMO := $(CFLAGS_DEBUG)
-else
-CFLAGS_DEMO := $(CFLAGS_BUILD)
-endif
 
 uuid7.c: uuid7.h
 
-build/demo: uuid7.c demo.c
+build:
 	mkdir -pv build
-	cc $(CFLAGS_DEMO) $^ -o $@
 
-build/demo-no-mutx: uuid7.c demo.c
-	mkdir -pv build
-	cc -DUUID7_SKIP_MUTEX=1 $(CFLAGS_DEMO) $^ -o $@
+build/demo: uuid7.c demo.c | build
+	$(CC) $(CFLAGS_DEMO) $^ -o $@
+
+build/demo-no-mutx: uuid7.c demo.c | build
+	$(CC) -DUUID7_SKIP_MUTEX=1 $(CFLAGS_DEMO) $^ -o $@
+
+coverage:
+	mkdir -pv coverage
+
+coverage/uuid7.o: uuid7.c | coverage
+	$(CC) -c -fPIC -I. $(CFLAGS_COVERAGE) -o $@ $<
+
+coverage/test-core: coverage/uuid7.o test-core.c
+	$(CC) -I. $(CFLAGS_COVERAGE) \
+		-L ./coverage $(LDFLAGS_COVERAGE) \
+		-o $@ $^ \
+		$(LDADD_COVERAGE)
+
+coverage/uuid7.gcda: coverage/test-core
+	pushd coverage && ./test-core
+
+coverage/uuid7.gcno: coverage/uuid7.gcda
+
+coverage/coverage.info: uuid7.c \
+		coverage/uuid7.gcda \
+		coverage/uuid7.gcno
+	 lcov  --checksum \
+		--capture \
+		--base-directory . \
+		--directory $(dir $@) \
+		--output-file $@
+	 ls -l $@
+
+coverage/tests/coverage_html/index.html: coverage/coverage.info
+	 mkdir -pv $(dir $@)
+	 genhtml $< --output-directory \
+		  ./coverage/tests/coverage_html
+	 ls -l $@
+
+coverage/tests/coverage_html/home/eric/src/libuuid7/uuid7.c.gcov.html: \
+		coverage/tests/coverage_html/index.html
+	ls -l $@
+
+.PHONY: view-coverage
+view-coverage: coverage/tests/coverage_html/home/eric/src/libuuid7/uuid7.c.gcov.html
+	$(BROWSER) $<
+
+
+.PHONY: check
+check: coverage/uuid7.gcda
+	@echo SUCCESS $@
 
 .PHONY: run_demo
 run-demo: build/demo
@@ -50,6 +101,9 @@ run-demo: build/demo
 .PHONY: run-no-mutex
 run-no-mutex: build/demo-no-mutx
 	build/demo-no-mutx
+
+# extracted from https://github.com/torvalds/linux/blob/master/scripts/Lindent
+LINDENT=indent -npro -kr -i8 -ts8 -sob -l80 -ss -ncs -cp1 -il0
 
 .PHONY: tidy
 tidy:
@@ -66,4 +120,4 @@ tidy:
 
 .PHONY: clean
 clean:
-	rm -rf *.o build *~
+	rm -rf *.o build coverage *~

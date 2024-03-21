@@ -2,5 +2,6 @@
 # Copyright (C) 2024 Eric Herman <eric@freesa.org>
 
 build/
+coverage/
 *.o
 *~

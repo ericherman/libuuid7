@@ -39,8 +39,8 @@ static uint8_t uuid7_last[16] = {
 #define static_assert _Static_assert
 #endif
 */
-static_assert(sizeof(union uuid7) == 16);
-static_assert(sizeof(union uuid7) == sizeof(uuid7_last));
+static_assert(sizeof(struct uuid7) == 16);
+static_assert(sizeof(uuid7_last) == 16);
 
 const uint8_t uuid7_version = 7;
 const uint8_t uuid7_variant = 1;
@@ -65,14 +65,31 @@ uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 	   3    F    F    F    F    F    C    0
 	 */
 
-	union uuid7 tmp;
-	tmp.seconds = (((uint64_t)ts.tv_sec) & 0x0000000FFFFFFFFF);
-	tmp.hifrac = ((((uint32_t)ts.tv_nsec) & 0x3FFC0000) >> (4 * 4));
-	tmp.uuid_ver = (uuid7_version & 0x0F);
-	tmp.lofrac = ((((uint32_t)ts.tv_nsec) & 0x0003FFC0) >> (4 + 2));
-	tmp.uuid_var = (uuid7_variant & 0x03);
-	tmp.sequence = 0;
-	tmp.rand = (random_bytes & 0x0000FFFFFFFFFFFF);
+	uint64_t seconds = (((uint64_t)ts.tv_sec) & 0x0000000FFFFFFFFF);
+	uint16_t hifrac =
+	    ((((uint32_t)ts.tv_nsec) & 0x3FFC0000) >> (2 + (4 * 4)));
+
+	uint16_t lofrac = ((((uint32_t)ts.tv_nsec) & 0x0003FFC0) >> (4 + 2));
+
+	ubuf[0] = (seconds & 0x0000000FF0000000) >> (7 * 4);
+	ubuf[1] = (seconds & 0x000000000FF00000) >> (5 * 4);
+	ubuf[2] = (seconds & 0x00000000000FF000) >> (3 * 4);
+	ubuf[3] = (seconds & 0x0000000000000FF0) >> (1 * 4);
+	ubuf[4] = (((seconds & 0x000000000000000F) << (1 * 4))
+		   | ((hifrac & 0x0F00) >> (2 * 4)));
+	ubuf[5] = (hifrac & 0x00FF);
+	ubuf[6] = (((uuid7_version & 0x0F) << 4)
+		   | ((lofrac & 0x0F00) >> (2 * 4)));
+	ubuf[7] = (lofrac & 0x00FF);
+	ubuf[8] = ((uuid7_variant & 0x03) << 6);
+	ubuf[9] = 0x00;
+
+	ubuf[10] = (random_bytes & 0x00000000000000FF) >> (0 * 8);
+	ubuf[11] = (random_bytes & 0x000000000000FF00) >> (1 * 8);
+	ubuf[12] = (random_bytes & 0x0000000000FF0000) >> (2 * 8);
+	ubuf[13] = (random_bytes & 0x00000000FF000000) >> (3 * 8);
+	ubuf[14] = (random_bytes & 0x000000FF00000000) >> (4 * 8);
+	ubuf[15] = (random_bytes & 0x0000FF0000000000) >> (5 * 8);
 
 #ifndef UUID7_SKIP_MUTEX
 	if (uuid7_mutex_initd) {
@@ -82,7 +99,7 @@ uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 
 	/* the first 8 bytes contain the seconds and the fraction */
 	static_assert((8 * 8) == (36 + 12 + 4 + 12));
-	if (memcmp(last_issued, &tmp.bytes, 8) == 0) {
+	if (memcmp(last_issued, ubuf, 8) == 0) {
 		uint16_t seq = 0;
 		seq = (((uint16_t)(last_issued[8] & 0x3F)) << 8)
 		    | (last_issued[9]);
@@ -90,16 +107,18 @@ uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 			/*
 			   A 10 Ghz CPU is 10 cycles per nanosecond.
 			   Even with multiple instructions per cycle,
-			   more than 16383 in the same 50 nanoseconds
-			   suggests something is wrong with th3 clockid
+			   more than 16383 in the same 64 nanoseconds
+			   suggests something is wrong with the clockid
 			 */
 			goto uuid7_next_end;
 		}
 		++seq;
-		tmp.sequence = seq;
+		ubuf[8] = (((uuid7_variant & 0x03) << 6)
+			   | ((seq & 0x3F00) >> 8));
+		ubuf[9] = (seq & 0x00FF);
 	}
 
-	if (!memcpy(last_issued, tmp.bytes, 16)) {
+	if (!memcpy(last_issued, ubuf, 16)) {
 		goto uuid7_next_end;
 	}
 
@@ -114,14 +133,41 @@ uuid7_next_end:
 #endif
 
 	if (!success) {
-		return NULL;
-	}
-
-	if (!memcpy(ubuf, tmp.bytes, 16)) {
+		memset(ubuf, 0x00, 16);
 		return NULL;
 	}
 
 	return ubuf;
+}
+
+struct uuid7 *uuid7_parts(struct uuid7 *u, const uint8_t *bytes)
+{
+	assert(u);
+	assert(bytes);
+
+	u->seconds = ((((uint64_t)bytes[0]) << (7 * 4))
+		      | (((uint64_t)bytes[1]) << (5 * 4))
+		      | (((uint64_t)bytes[2]) << (3 * 4))
+		      | (((uint64_t)bytes[3]) << (1 * 4))
+		      | (((uint64_t)bytes[4]) >> (1 * 4)));
+
+	u->hifrac = ((((uint16_t)bytes[4] & 0x0F) << 8) | bytes[5]);
+	u->uuid_ver = (bytes[6] & 0xF0) >> 4;
+	u->lofrac = (((uint16_t)(bytes[6] & 0x0F)) << 8) | bytes[7];
+	u->uuid_var = (bytes[8] & 0xC0) >> 6;
+	u->sequence = (((uint16_t)(bytes[8] & 0x3F)) << 8) | bytes[9];
+
+	u->rand = (((uint64_t)0x00) << (8 * 7))
+	    | (((uint64_t)0x00) << (8 * 6))
+	    | (((uint64_t)bytes[15]) << (8 * 5))
+	    | (((uint64_t)bytes[14]) << (8 * 4))
+	    | (((uint64_t)bytes[13]) << (8 * 3))
+	    | (((uint64_t)bytes[12]) << (8 * 2))
+	    | (((uint64_t)bytes[11]) << (8 * 1))
+	    | (((uint64_t)bytes[10]) << (8 * 0));
+
+	return u->uuid_ver == uuid7_version && u->uuid_var == uuid7_variant
+	    ? u : NULL;
 }
 
 uint8_t *uuid7(uint8_t *ubuf)

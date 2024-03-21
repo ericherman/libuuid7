@@ -17,7 +17,7 @@ https://savannah.gnu.org/bugs/index.php?65165
  
  #include <stdint.h>
  #include <stddef.h>
-@@ -36,7 +38,9 @@
+@@ -34,7 +36,9 @@ struct uuid7 *uuid7_parts(struct uuid7 *u, const uint8_t *bytes);
  extern const uint8_t uuid7_version;
  extern const uint8_t uuid7_variant;
  
