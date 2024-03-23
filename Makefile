@@ -43,10 +43,10 @@ uuid7.c: uuid7.h
 build:
 	mkdir -pv build
 
-build/demo: uuid7.c demo.c | build
+build/uuid7-demo: uuid7.c uuid7-demo.c | build
 	$(CC) $(CFLAGS_DEMO) $^ -o $@
 
-build/demo-no-mutx: uuid7.c demo.c | build
+build/uuid7-demo-no-mutx: uuid7.c uuid7-demo.c | build
 	$(CC) -DUUID7_SKIP_MUTEX=1 $(CFLAGS_DEMO) $^ -o $@
 
 coverage:
@@ -110,13 +110,13 @@ view-coverage: coverage/tests/coverage_html/home/eric/src/libuuid7/uuid7.c.gcov.
 check: check-unit check-coverage
 	@echo "SUCCESS $@"
 
-.PHONY: run_demo
-run-demo: build/demo
-	build/demo
+.PHONY: run-demo
+run-demo: build/uuid7-demo
+	$<
 
 .PHONY: run-no-mutex
-run-no-mutex: build/demo-no-mutx
-	build/demo-no-mutx
+run-no-mutex: build/uuid7-demo-no-mutx
+	$<
 
 # extracted from https://github.com/torvalds/linux/blob/master/scripts/Lindent
 LINDENT=indent -npro -kr -i8 -ts8 -sob -l80 -ss -ncs -cp1 -il0
