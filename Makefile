@@ -125,6 +125,7 @@ LINDENT=indent -npro -kr -i8 -ts8 -sob -l80 -ss -ncs -cp1 -il0
 tidy:
 	patch -Np1 -i misc/workaround-indent-bug-65165.patch
 	$(LINDENT) \
+		-T timespec \
 		-T FILE \
 		-T size_t -T ssize_t \
 		-T uint8_t -T int8_t \

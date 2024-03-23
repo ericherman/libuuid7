@@ -21,7 +21,7 @@ ssize_t (*uuid7_getrandom)(void *buf, size_t buflen, unsigned int flags)
 #include <time.h>
 // for UUID7_DEBUG, allow swapping the clock_gettime function at runtime
 #ifdef UUID7_DEBUG
-int (*uuid7_clock_gettime)(clockid_t clockid, struct timespec * tp)
+int (*uuid7_clock_gettime)(clockid_t clockid, struct timespec *tp)
     = clock_gettime;
 #else
 #define uuid7_clock_gettime clock_gettime

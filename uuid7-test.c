@@ -295,7 +295,7 @@ unsigned check_bad_clock_id(void)
 }
 
 /* friend function defined in uui7.c, but not exposed in uuid7.h */
-extern int (*uuid7_clock_gettime)(clockid_t clockid, struct timespec * tp);
+extern int (*uuid7_clock_gettime)(clockid_t clockid, struct timespec *tp);
 
 time_t uuid7_test_bogus_clock_sec = 0;
 long uuid7_test_bogus_clock_nsec = 0;
@@ -316,7 +316,7 @@ unsigned check_bad_gettime(void)
 {
 	unsigned failures = 0;
 
-	int (*orig_gettime)(clockid_t clockid, struct timespec * tp) =
+	int (*orig_gettime)(clockid_t clockid, struct timespec *tp) =
 	    uuid7_clock_gettime;
 
 	uuid7_clock_gettime = uuid7_test_bogus_clock_gettime;
