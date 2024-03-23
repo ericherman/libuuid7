@@ -157,6 +157,29 @@ static unsigned uuid7_check_u64(const char *file, long line, const char *func,
 	uuid7_check_u64(__FILE__, __LINE__, __func__, \
 			#actual, ((uint64_t)actual), ((uint64_t)expected))
 
+static unsigned uuid7_check_s(const char *file, long line, const char *func,
+			      const char *name, const char *val,
+			      const char *expect)
+{
+	if (strcmp(val, expect) == 0) {
+		return 0;
+	}
+
+	const char *fmt =	//
+	    "FAIL: %s\n"	//
+	    "\texpected '%s'\n"	//
+	    "\t but was '%s'\n";
+	fprintf(stderr, "%s:%ld %s(): ", file, line, func);
+	fprintf(stderr, fmt, name, expect, val);
+
+	return 1;
+}
+
+#define Check_s(actual, expected) \
+	uuid7_check_s(__FILE__, __LINE__, __func__, \
+			#actual, actual, expected)
+
+/* A "friend" function defined in uuid7.c, but not exposed in the API */
 uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 		    uint8_t *last_issued);
 
@@ -183,7 +206,8 @@ unsigned check_parts(void)
 	memset(last, 0x00, 16);
 	memset(ubuf, '?', 16);
 
-	uuid7_next(ubuf, ts, random_bytes, last);
+	uint8_t *rv = uuid7_next(ubuf, ts, random_bytes, last);
+	failures += Check((intptr_t) rv, (intptr_t) ubuf);
 
 	struct uuid7 u;
 	uuid7_parts(&u, ubuf);
@@ -209,30 +233,19 @@ unsigned check_parts(void)
 	failures += Check(u.sequence, 1);
 	failures += Check(u.rand, random_bytes);
 
-	return failures;
-}
-
-static unsigned uuid7_check_s(const char *file, long line, const char *func,
-			      const char *name, const char *val,
-			      const char *expect)
-{
-	if (strcmp(val, expect) == 0) {
-		return 0;
+	size_t max_seq = ((1U << 14) - 1);
+	for (size_t i = 2; i <= max_seq; ++i) {
+		uuid7_next(ubuf, ts, random_bytes, last);
+		uuid7_parts(&u, ubuf);
+		failures += Check(u.sequence, i);
 	}
 
-	const char *fmt =	//
-	    "FAIL: %s\n"	//
-	    "\texpected '%s'\n"	//
-	    "\t but was '%s'\n";
-	fprintf(stderr, "%s:%ld %s(): ", file, line, func);
-	fprintf(stderr, fmt, name, expect, val);
+	rv = uuid7_next(ubuf, ts, random_bytes, last);
+	failures += Check((intptr_t) rv, (intptr_t) NULL);
+	failures += Check_s((const char *)ubuf, "");
 
-	return 1;
+	return failures;
 }
-
-#define Check_s(actual, expected) \
-	uuid7_check_s(__FILE__, __LINE__, __func__, \
-			#actual, actual, expected)
 
 unsigned check_to_string(void)
 {
@@ -247,9 +260,119 @@ unsigned check_to_string(void)
 	char buf[80];
 	size_t bufz = sizeof(buf);
 
-	uuid7_to_string(buf, bufz, bytes);
+	size_t too_small = 7;
+	failures +=
+	    Check(((intptr_t) uuid7_to_string(buf, too_small, bytes)),
+		  (intptr_t) NULL);
+	failures += Check_s(buf, "");
 
+	char *rv = uuid7_to_string(buf, bufz, bytes);
+	failures += Check((intptr_t) rv, (intptr_t) buf);
 	failures += Check_s(buf, "01234567-89ab-7cde-9f01-23456789abcd");
+
+	return failures;
+}
+
+/* global variable defined in uuid7.c, but not exposed in uuid7.h */
+extern clockid_t uuid7_clockid;
+
+unsigned check_bad_clock_id(void)
+{
+	unsigned failures = 0;
+
+	clockid_t orig_clockid = uuid7_clockid;
+	uuid7_clockid = 1234567;	/* assumed to be bogus */
+
+	uint8_t ubuf[16];
+	memset(ubuf, '?', sizeof(ubuf));
+
+	uint8_t *rv = uuid7(ubuf);
+	failures += Check((intptr_t) rv, (intptr_t) NULL);
+
+	uuid7_clockid = orig_clockid;
+
+	return failures;
+}
+
+/* friend function defined in uui7.c, but not exposed in uuid7.h */
+extern int (*uuid7_clock_gettime)(clockid_t clockid, struct timespec * tp);
+
+time_t uuid7_test_bogus_clock_sec = 0;
+long uuid7_test_bogus_clock_nsec = 0;
+int uuid7_test_bogus_clock_rv = 0;
+int uuid7_test_bogus_clock_gettime(clockid_t clockid, struct timespec *tp)
+{
+	(void)clockid;
+
+	if (tp) {
+		tp->tv_sec = uuid7_test_bogus_clock_sec;
+		tp->tv_nsec = uuid7_test_bogus_clock_nsec;
+	}
+
+	return uuid7_test_bogus_clock_rv;
+}
+
+unsigned check_bad_gettime(void)
+{
+	unsigned failures = 0;
+
+	int (*orig_gettime)(clockid_t clockid, struct timespec * tp) =
+	    uuid7_clock_gettime;
+
+	uuid7_clock_gettime = uuid7_test_bogus_clock_gettime;
+	uuid7_test_bogus_clock_rv = 1;
+
+	uint8_t ubuf[16];
+	memset(ubuf, '?', sizeof(ubuf));
+
+	uint8_t *rv = uuid7(ubuf);
+	failures += Check((intptr_t) rv, (intptr_t) NULL);
+
+	uuid7_clock_gettime = orig_gettime;
+
+	return failures;
+}
+
+/* friend function defined in uui7.c, but not exposed in uuid7.h */
+extern ssize_t (*uuid7_getrandom)(void *buf, size_t buflen, unsigned int flags);
+
+uint8_t *uuid7_test_getrandom_bytes = NULL;
+size_t uuid7_test_getrandom_bytes_size = 0;
+ssize_t uuid7_test_getrandom_rv = 0;
+ssize_t uuid7_test_getrandom(void *buf, size_t bufz, unsigned int flags)
+{
+	(void)flags;
+
+	if (uuid7_test_getrandom_rv < 0) {
+		return uuid7_test_getrandom_rv;
+	}
+
+	if (uuid7_test_getrandom_bytes && uuid7_test_getrandom_bytes_size) {
+		memcpy(buf, uuid7_test_getrandom_bytes,
+		       bufz < uuid7_test_getrandom_bytes_size
+		       ? bufz : uuid7_test_getrandom_bytes_size);
+	}
+
+	return uuid7_test_getrandom_rv;
+}
+
+unsigned check_bad_getrandom(void)
+{
+	unsigned failures = 0;
+
+	ssize_t (*orig_getrandom)(void *buf, size_t buflen, unsigned int flags)
+	    = uuid7_getrandom;
+
+	uuid7_getrandom = uuid7_test_getrandom;
+	uuid7_test_getrandom_rv = -1;
+
+	uint8_t ubuf[16];
+	memset(ubuf, '?', sizeof(ubuf));
+
+	uint8_t *rv = uuid7(ubuf);
+	failures += Check((intptr_t) rv, (intptr_t) NULL);
+
+	uuid7_getrandom = orig_getrandom;
 
 	return failures;
 }
@@ -265,6 +388,9 @@ int main(void)
 	failures += check_sortable();
 	failures += check_parts();
 	failures += check_to_string();
+	failures += check_bad_clock_id();
+	failures += check_bad_gettime();
+	failures += check_bad_getrandom();
 
 #ifndef UUID7_SKIP_MUTEX
 	uuid7_mutex_destroy();

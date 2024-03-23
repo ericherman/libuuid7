@@ -8,18 +8,35 @@
 
 #ifndef uuid7_getrandom
 #include <sys/random.h>
+// for UUID7_DEBUG, allow swapping the getrandom function at runtime
+#ifdef UUID7_DEBUG
+ssize_t (*uuid7_getrandom)(void *buf, size_t buflen, unsigned int flags)
+    = getrandom;
+#else
 #define uuid7_getrandom getrandom
+#endif
 #endif
 
 #ifndef uuid7_clock_gettime
 #include <time.h>
+// for UUID7_DEBUG, allow swapping the clock_gettime function at runtime
+#ifdef UUID7_DEBUG
+int (*uuid7_clock_gettime)(clockid_t clockid, struct timespec * tp)
+    = clock_gettime;
+#else
 #define uuid7_clock_gettime clock_gettime
+#endif
 #endif
 
 #ifndef UUID7_CLOCKID
 #define UUID7_CLOCKID CLOCK_REALTIME
 #endif
-const clockid_t uuid7_clockid = UUID7_CLOCKID;
+
+// for UUID7_DEBUG, allow changing the uuid7_clockid at runtime, otherwise const
+#ifndef UUID7_DEBUG
+const
+#endif
+clockid_t uuid7_clockid = UUID7_CLOCKID;
 
 #ifndef UUID7_SKIP_MUTEX
 #include <stdbool.h>
@@ -118,9 +135,9 @@ uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 		ubuf[9] = (seq & 0x00FF);
 	}
 
-	if (!memcpy(last_issued, ubuf, 16)) {
-		goto uuid7_next_end;
-	}
+	void *dest = memcpy(last_issued, ubuf, 16);
+	assert(dest);
+	(void)dest;
 
 	success = 1;
 
@@ -197,15 +214,21 @@ static char uuid7_nibble_to_hex(uint8_t nib)
 	return rv;
 }
 
+static size_t uuid7_minz(size_t a, size_t b)
+{
+	return (a < b) ? a : b;
+}
+
 /* 8-4-4-4-12 */
 char *uuid7_to_string(char *buf, size_t buf_size, const uint8_t *bytes)
 {
+	assert(buf);
 	const size_t uuid_str_size = ((16 * 2) + 4) + 1;
+	memset(buf, 0x00, uuid7_minz(uuid_str_size, buf_size));
 	if (buf_size < uuid_str_size) {
 		return NULL;
 	}
 	size_t pos = 0;
-	memset(buf, 0x00, uuid_str_size);
 	for (size_t i = 0; i < 16; ++i) {
 		uint8_t byte = bytes[i];
 		uint8_t hi_nib = ((byte & 0xF0) >> 4);

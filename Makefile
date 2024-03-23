@@ -24,13 +24,14 @@ CFLAGS_NOISY := -Wall -Wextra -Wpedantic -Wcast-qual -Wc++-compat \
 		$(CFLAGS) -pipe
 
 CFLAGS_DEBUG := -g -O0 $(CFLAGS_NOISY) -Werror \
-	 -fno-inline-small-functions \
-	 -fkeep-inline-functions \
-	 -fkeep-static-functions
+	-DUUID7_DEBUG \
+	-fno-inline-small-functions \
+	-fkeep-inline-functions \
+	-fkeep-static-functions
 
 CFLAGS_COVERAGE := $(CFLAGS_DEBUG) \
-	 -fprofile-arcs \
-	 -ftest-coverage
+	-fprofile-arcs \
+	-ftest-coverage
 
 LDFLAGS_COVERAGE := --coverage
 LDADD_COVERAGE := -lgcov
@@ -54,36 +55,51 @@ coverage:
 coverage/uuid7.o: uuid7.c | coverage
 	$(CC) -c -fPIC -I. $(CFLAGS_COVERAGE) -o $@ $<
 
-coverage/test-core: coverage/uuid7.o test-core.c
+coverage/uuid7-test: coverage/uuid7.o uuid7-test.c
 	$(CC) -I. $(CFLAGS_COVERAGE) \
 		-L ./coverage $(LDFLAGS_COVERAGE) \
 		-o $@ $^ \
 		$(LDADD_COVERAGE)
 
-coverage/uuid7.gcda: coverage/test-core
-	pushd coverage && ./test-core
+.PHONY: check-unit
+check-unit: coverage/uuid7-test
+	pushd coverage && ./uuid7-test
+	@echo SUCCESS $@
+
+coverage/uuid7.gcda: check-unit
+	ls -l $@
 
 coverage/uuid7.gcno: coverage/uuid7.gcda
+	ls -l $@
 
 coverage/coverage.info: uuid7.c \
 		coverage/uuid7.gcda \
 		coverage/uuid7.gcno
-	 lcov  --checksum \
+	lcov  --checksum \
 		--capture \
 		--base-directory . \
 		--directory $(dir $@) \
 		--output-file $@
-	 ls -l $@
+	ls -l $@
 
 coverage/tests/coverage_html/index.html: coverage/coverage.info
-	 mkdir -pv $(dir $@)
-	 genhtml $< --output-directory \
-		  ./coverage/tests/coverage_html
-	 ls -l $@
+	mkdir -pv $(dir $@)
+	genhtml $< --output-directory \
+		./coverage/tests/coverage_html
+	ls -l $@
 
 coverage/tests/coverage_html/home/eric/src/libuuid7/uuid7.c.gcov.html: \
 		coverage/tests/coverage_html/index.html
 	ls -l $@
+
+.PHONY: check-coverage
+check-coverage: coverage/tests/coverage_html/home/eric/src/libuuid7/uuid7.c.gcov.html
+	if [ $$(grep -c 'headerCovTableEntryHi">100.0 %' $< ) -eq 2 ]; then \
+		true; \
+	else grep headerCovTableEntryHi $< && \
+		false; \
+	fi
+	@echo "SUCCESS $@"
 
 .PHONY: view-coverage
 view-coverage: coverage/tests/coverage_html/home/eric/src/libuuid7/uuid7.c.gcov.html
@@ -91,8 +107,8 @@ view-coverage: coverage/tests/coverage_html/home/eric/src/libuuid7/uuid7.c.gcov.
 
 
 .PHONY: check
-check: coverage/uuid7.gcda
-	@echo SUCCESS $@
+check: check-unit check-coverage
+	@echo "SUCCESS $@"
 
 .PHONY: run_demo
 run-demo: build/demo
