@@ -1,7 +1,10 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # Copyright (C) 2024 Eric Herman <eric@freesa.org>
 
-default: run-demo
+default: \
+	build/uuid7.o \
+	build/uuid7-demo-with-mutex-static \
+	run-demo
 
 # $@ : target label
 # $< : the first prerequisite after the colon
@@ -43,11 +46,14 @@ uuid7.c: uuid7.h
 build:
 	mkdir -pv build
 
-build/uuid7-demo: uuid7.c uuid7-demo.c | build
+build/uuid7.o: uuid7.c | build
+	$(CC) -c -fPIC -I. $(CFLAGS_DEMO) $^ -o $@
+
+build/uuid7-demo-static: build/uuid7.o uuid7-demo.c
 	$(CC) $(CFLAGS_DEMO) $^ -o $@
 
-build/uuid7-demo-no-mutx: uuid7.c uuid7-demo.c | build
-	$(CC) -DUUID7_SKIP_MUTEX=1 $(CFLAGS_DEMO) $^ -o $@
+build/uuid7-demo-with-mutex-static: uuid7.c uuid7-demo.c
+	$(CC) -DUUID7_WITH_MUTEX=1 $(CFLAGS_DEMO) $^ -o $@
 
 coverage:
 	mkdir -pv coverage
@@ -111,11 +117,11 @@ check: check-unit check-coverage
 	@echo "SUCCESS $@"
 
 .PHONY: run-demo
-run-demo: build/uuid7-demo
+run-demo: build/uuid7-demo-static
 	$<
 
-.PHONY: run-no-mutex
-run-no-mutex: build/uuid7-demo-no-mutx
+.PHONY: run-with-mutex
+run-with-mutex: build/uuid7-demo-with-mutex-static
 	$<
 
 # extracted from https://github.com/torvalds/linux/blob/master/scripts/Lindent
@@ -126,6 +132,7 @@ tidy:
 	patch -Np1 -i misc/workaround-indent-bug-65165.patch
 	$(LINDENT) \
 		-T timespec \
+		-T intptr_t \
 		-T FILE \
 		-T size_t -T ssize_t \
 		-T uint8_t -T int8_t \

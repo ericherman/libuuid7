@@ -38,17 +38,66 @@ const
 #endif
 clockid_t uuid7_clockid = UUID7_CLOCKID;
 
-#ifndef UUID7_SKIP_MUTEX
-#include <stdbool.h>
+#ifndef UUID7_NO_THREADS
+#ifdef ARDUINO
+#define UUID7_NO_THREADS 1
+#else
+#define UUID7_NO_THREADS 0
 #include <threads.h>
+#endif
+#endif
+
+#if (UUID7_NO_THREADS)
+#ifdef UUID7_WITH_MUTEX
+#error UUID7_WITH_MUTEX does not make sense with UUID7_NO_THREADS
+#endif
+#endif
+
+#ifdef UUID7_WITH_MUTEX
+#include <stdbool.h>
 static bool uuid7_mutex_initd = false;
 static mtx_t uuid7_mutex;
 #endif
 
-static uint8_t uuid7_last[16] = {
+static
+#ifndef UUID7_WITH_MUTEX
+#if (!UUID7_NO_THREADS)
+ thread_local
+#endif
+#endif
+uint8_t uuid7_last[16] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
+
+/*
+   If the clock has gone backwards in time by a large amount,
+   the system may not catch up in a reasonable time, and thus
+   it may be more desirable to generate UUIDs that would sort
+   prior to UUIDs already generated.
+
+   In that situation, uuid7_reset can be used.
+
+   However, if not UUID7_WITH_MUTEX and not UUID7_NO_THREADS,
+   then this will need to be called for each thread which has
+   already set the thread_local uuid7_last.
+*/
+void uuid7_reset(void)
+{
+#ifdef UUID7_WITH_MUTEX
+	if (uuid7_mutex_initd) {
+		mtx_lock(&uuid7_mutex);
+	}
+#endif
+
+	memset(uuid7_last, 0x00, 16);
+
+#ifdef UUID7_WITH_MUTEX
+	if (uuid7_mutex_initd) {
+		mtx_unlock(&uuid7_mutex);
+	}
+#endif
+}
 
 #include <assert.h>
 /*
@@ -62,8 +111,8 @@ static_assert(sizeof(uuid7_last) == 16);
 const uint8_t uuid7_version = 7;
 const uint8_t uuid7_variant = 1;
 
-uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
-		    uint8_t *last_issued)
+uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint16_t segment,
+		    uint32_t random_bytes, uint8_t *last_issued)
 {
 	assert(ubuf);
 	assert(ts.tv_nsec >= 0 && ts.tv_nsec <= 999999999);
@@ -80,6 +129,11 @@ uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 	   0011 1011 1001 1010 1100 1001 1111 1111
 	   --++ ++++ ++++ ++++ ++++ ++++ ++-- ----
 	   3    F    F    F    F    F    C    0
+
+	   However, since modern clocks really are nanosecond time,
+	   we will put those last 6 bits from the time in to the 6
+	   high bits of the 14 bit sequence number, 255 values for
+	   sequences created in the same nanosecond.
 	 */
 
 	uint64_t seconds = (((uint64_t)ts.tv_sec) & 0x0000000FFFFFFFFF);
@@ -87,6 +141,7 @@ uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 	    ((((uint32_t)ts.tv_nsec) & 0x3FFC0000) >> (2 + (4 * 4)));
 
 	uint16_t lofrac = ((((uint32_t)ts.tv_nsec) & 0x0003FFC0) >> (4 + 2));
+	uint8_t hiseq = (ts.tv_nsec & 0x3F);
 
 	ubuf[0] = (seconds & 0x0000000FF0000000) >> (7 * 4);
 	ubuf[1] = (seconds & 0x000000000FF00000) >> (5 * 4);
@@ -98,41 +153,56 @@ uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 	ubuf[6] = (((uuid7_version & 0x0F) << 4)
 		   | ((lofrac & 0x0F00) >> (2 * 4)));
 	ubuf[7] = (lofrac & 0x00FF);
-	ubuf[8] = ((uuid7_variant & 0x03) << 6);
+	ubuf[8] = ((uuid7_variant & 0x03) << 6) | hiseq;
 	ubuf[9] = 0x00;
+	ubuf[10] = ((segment & 0xFF00) >> 8);
+	ubuf[11] = ((segment & 0x00FF));
+	ubuf[12] = (random_bytes & 0x00000000000000FF) >> (0 * 8);
+	ubuf[13] = (random_bytes & 0x000000000000FF00) >> (1 * 8);
+	ubuf[14] = (random_bytes & 0x0000000000FF0000) >> (2 * 8);
+	ubuf[15] = (random_bytes & 0x00000000FF000000) >> (3 * 8);
 
-	ubuf[10] = (random_bytes & 0x00000000000000FF) >> (0 * 8);
-	ubuf[11] = (random_bytes & 0x000000000000FF00) >> (1 * 8);
-	ubuf[12] = (random_bytes & 0x0000000000FF0000) >> (2 * 8);
-	ubuf[13] = (random_bytes & 0x00000000FF000000) >> (3 * 8);
-	ubuf[14] = (random_bytes & 0x000000FF00000000) >> (4 * 8);
-	ubuf[15] = (random_bytes & 0x0000FF0000000000) >> (5 * 8);
-
-#ifndef UUID7_SKIP_MUTEX
+#ifdef UUID7_WITH_MUTEX
 	if (uuid7_mutex_initd) {
 		mtx_lock(&uuid7_mutex);
 	}
 #endif
 
-	/* the first 8 bytes contain the seconds and the fraction */
-	static_assert((8 * 8) == (36 + 12 + 4 + 12));
-	if (memcmp(last_issued, ubuf, 8) == 0) {
-		uint16_t seq = 0;
-		seq = (((uint16_t)(last_issued[8] & 0x3F)) << 8)
-		    | (last_issued[9]);
-		if (seq >= 0x3FFF) {
+	/* the first 9 bytes contain the seconds and the fraction */
+	static_assert((9 * 8) == (36 + 12 + 4 + 12 + 2 + 6));
+	int cmp = memcmp(last_issued, ubuf, 9);
+	if (cmp > 0) {
+		/*
+		   Sadly, we've gone backwards in time.
+		   The caller will have to try again when time catches up
+
+		   If they are very chummy with the library,
+		   they can declare, and call a non-API "friend" function:
+		   void uuid7_reset(void);
+		   and then call that before re-trying.
+		 */
+		goto uuid7_next_end;
+	}
+	if (cmp == 0) {
+		uint16_t seq = 1 + last_issued[9];
+		if (seq <= 0xFF) {
+			ubuf[9] = seq;
+		} else {
+			ubuf[9] = 0xFF;
 			/*
 			   A 10 Ghz CPU is 10 cycles per nanosecond.
 			   Even with multiple instructions per cycle,
 			   more than 16383 in the same 64 nanoseconds
 			   suggests something is wrong with the clockid
+
+			   Perhaps the caller will be lucky and the
+			   random bits will sort naturally, we shall see
 			 */
-			goto uuid7_next_end;
+			if (memcmp(last_issued, ubuf, 16) >= 0) {
+				/* the caller was NOT lucky, this is a fail */
+				goto uuid7_next_end;
+			}
 		}
-		++seq;
-		ubuf[8] = (((uuid7_variant & 0x03) << 6)
-			   | ((seq & 0x3F00) >> 8));
-		ubuf[9] = (seq & 0x00FF);
 	}
 
 	void *dest = memcpy(last_issued, ubuf, 16);
@@ -143,7 +213,7 @@ uint8_t *uuid7_next(uint8_t *ubuf, struct timespec ts, uint64_t random_bytes,
 
 uuid7_next_end:
 
-#ifndef UUID7_SKIP_MUTEX
+#ifdef UUID7_WITH_MUTEX
 	if (uuid7_mutex_initd) {
 		mtx_unlock(&uuid7_mutex);
 	}
@@ -172,16 +242,14 @@ struct uuid7 *uuid7_parts(struct uuid7 *u, const uint8_t *bytes)
 	u->uuid_ver = (bytes[6] & 0xF0) >> 4;
 	u->lofrac = (((uint16_t)(bytes[6] & 0x0F)) << 8) | bytes[7];
 	u->uuid_var = (bytes[8] & 0xC0) >> 6;
-	u->sequence = (((uint16_t)(bytes[8] & 0x3F)) << 8) | bytes[9];
+	u->hiseq = bytes[8] & 0x3F;
+	u->loseq = bytes[9];
+	u->segment = (((uint16_t)bytes[10]) << 8) | bytes[11];
 
-	u->rand = (((uint64_t)0x00) << (8 * 7))
-	    | (((uint64_t)0x00) << (8 * 6))
-	    | (((uint64_t)bytes[15]) << (8 * 5))
-	    | (((uint64_t)bytes[14]) << (8 * 4))
-	    | (((uint64_t)bytes[13]) << (8 * 3))
-	    | (((uint64_t)bytes[12]) << (8 * 2))
-	    | (((uint64_t)bytes[11]) << (8 * 1))
-	    | (((uint64_t)bytes[10]) << (8 * 0));
+	u->rand = (((uint64_t)bytes[15]) << (8 * 3))
+	    | (((uint64_t)bytes[14]) << (8 * 2))
+	    | (((uint64_t)bytes[13]) << (8 * 1))
+	    | (((uint64_t)bytes[12]) << (8 * 0));
 
 	return u->uuid_ver == uuid7_version && u->uuid_var == uuid7_variant
 	    ? u : NULL;
@@ -191,6 +259,7 @@ uint8_t *uuid7(uint8_t *ubuf)
 {
 	struct timespec ts;
 	if (uuid7_clock_gettime(uuid7_clockid, &ts)) {
+		memset(ubuf, 0x00, 16);
 		return NULL;
 	}
 
@@ -199,10 +268,22 @@ uint8_t *uuid7(uint8_t *ubuf)
 	unsigned int flags = 0;
 	ssize_t rndbytes = uuid7_getrandom(&random_bytes, size, flags);
 	if (rndbytes < 0 || ((size_t)rndbytes != size)) {
+		memset(ubuf, 0x00, 16);
 		return NULL;
 	}
+#ifdef UUID7_WITH_MUTEX
+	/* everything is mutexed, there is no segmenting */
+	uint16_t segment = (uint16_t)(random_bytes >> (4 * 8));
+#elif UUID7_NO_THREADS
+	/* there is only one thread, there is no segmenting */
+	uint16_t segment = (uint16_t)(random_bytes >> (4 * 8));
+#else
+	/* segment by low-16 bits of address of thread_local */
+	uint16_t segment = (uint16_t)((uintptr_t) uuid7_last);
+#endif
 
-	return uuid7_next(ubuf, ts, random_bytes, uuid7_last);
+	uint32_t rand32 = (0xFFFFFFFF & random_bytes);
+	return uuid7_next(ubuf, ts, segment, rand32, uuid7_last);
 }
 
 static char uuid7_nibble_to_hex(uint8_t nib)
@@ -246,7 +327,7 @@ char *uuid7_to_string(char *buf, size_t buf_size, const uint8_t *bytes)
 	return buf;
 }
 
-#ifndef UUID7_SKIP_MUTEX
+#ifdef UUID7_WITH_MUTEX
 int uuid7_mutex_init(void)
 {
 	int rv = mtx_init(&uuid7_mutex, mtx_plain);

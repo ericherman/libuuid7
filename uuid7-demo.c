@@ -17,14 +17,16 @@ char *uuid7_decode(char *buf, size_t buflen, const uint8_t *bytes)
 
 	uuid7_parts(&tmp, bytes);
 
-	uint32_t nanos = (((uint32_t)tmp.hifrac) << 12) | tmp.lofrac;
+	uint32_t nanos = (((uint32_t)tmp.hifrac) << 18)
+	    | (((uint32_t)tmp.lofrac) << 6)
+	    | tmp.hiseq;
 
 	const char *fmt =
 	    "%" PRIu64 ".%" PRIu32 " [%" PRIu16 "] (%" PRIu8 ",%" PRIu8
-	    ") %012" PRIx64;
+	    ") [%04" PRIx16 "] %08" PRIx32;
 
-	snprintf(buf, buflen, fmt, tmp.seconds, nanos, tmp.sequence,
-		 tmp.uuid_ver, tmp.uuid_var, tmp.rand);
+	snprintf(buf, buflen, fmt, tmp.seconds, nanos, tmp.loseq,
+		 tmp.uuid_ver, tmp.uuid_var, tmp.segment, tmp.rand);
 
 	if ((tmp.uuid_ver != uuid7_version)
 	    || (tmp.uuid_var != uuid7_variant)) {
@@ -146,7 +148,7 @@ int main(int argc, char **argv)
 	memset(uuid7s, 0x00, uuids_len * 16);
 
 	printf("\n\nGenerating %zu UUIDs ...", uuids_len);
-#ifndef UUID7_SKIP_MUTEX
+#ifdef UUID7_WITH_MUTEX
 	uuid7_mutex_init();
 #endif
 
@@ -184,7 +186,7 @@ int main(int argc, char **argv)
 		printf("%zu: %s\n", i, buf2);
 	}
 
-#ifndef UUID7_SKIP_MUTEX
+#ifdef UUID7_WITH_MUTEX
 	uuid7_mutex_destroy();
 #endif
 	free(ts);

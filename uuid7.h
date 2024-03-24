@@ -15,7 +15,7 @@ uint8_t *uuid7(uint8_t *ubuf);
 
 char *uuid7_to_string(char *buf, size_t buf_size, const uint8_t *bytes);
 
-#ifndef UUID7_SKIP_MUTEX
+#ifdef UUID7_WITH_MUTEX
 int uuid7_mutex_init(void);
 void uuid7_mutex_destroy(void);
 #endif
@@ -26,8 +26,10 @@ struct uuid7 {
 	uint8_t uuid_ver:4;
 	uint16_t lofrac:12;
 	uint8_t uuid_var:2;
-	uint16_t sequence:14;
-	uint64_t rand:48;
+	uint16_t hiseq:6;
+	uint16_t loseq:8;
+	uint16_t segment:16;
+	uint32_t rand:32;
 };
 struct uuid7 *uuid7_parts(struct uuid7 *u, const uint8_t *bytes);
 
