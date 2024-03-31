@@ -278,8 +278,11 @@ uint8_t *uuid7(uint8_t *ubuf)
 	/* there is only one thread, there is no segmenting */
 	uint16_t segment = (uint16_t)(random_bytes >> (4 * 8));
 #else
-	/* segment by low-16 bits of address of thread_local */
-	uint16_t segment = (uint16_t)((uintptr_t) uuid7_last);
+	/* segment by address of thread_local */
+	uint16_t segment = 0;
+	for (size_t i = 1; i < (sizeof(uintptr_t) / 2); ++i) {
+		segment = segment ^ (((uintptr_t) uuid7_last) >> (16 * i));
+	}
 #endif
 
 	uint32_t rand32 = (0xFFFFFFFF & random_bytes);
