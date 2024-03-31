@@ -203,6 +203,8 @@ tidy:
 	patch -Np1 -i misc/workaround-indent-bug-65165.patch
 	$(LINDENT) \
 		-T timespec \
+		-T timespec_task \
+		-T uuid7_task \
 		-T intptr_t \
 		-T FILE \
 		-T size_t -T ssize_t \
