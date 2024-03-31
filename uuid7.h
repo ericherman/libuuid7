@@ -26,8 +26,8 @@ struct uuid7 {
 	uint8_t uuid_ver:4;
 	uint16_t lofrac:12;
 	uint8_t uuid_var:2;
-	uint16_t hiseq:6;
-	uint16_t loseq:8;
+	uint8_t hiseq:6;
+	uint8_t loseq:8;
 	uint16_t segment:16;
 	uint32_t rand:32;
 };
