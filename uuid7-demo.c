@@ -140,6 +140,7 @@ int timespec_compare(const void *a, const void *b)
 struct uuid7_task {
 	uint8_t *buf;
 	size_t bufz;
+	size_t retries;
 };
 
 int uuid7_task_thread_func(void *context)
@@ -153,11 +154,12 @@ int uuid7_task_thread_func(void *context)
 		uint8_t *rv = NULL;
 		size_t max_tries = 100;
 		for (size_t j = 0; !rv && j < max_tries; ++j) {
-			rv = uuid7(uuid7_buf);
+			task->retries = j;
 			if (j > 50) {
 				struct timespec snooze = { 0, 2 };
 				nanosleep(&snooze, NULL);
 			}
+			rv = uuid7(uuid7_buf);
 		}
 		if (!rv) {
 			Err("uuid7(%p) failed", uuid7_buf);
@@ -170,6 +172,11 @@ int uuid7_task_thread_func(void *context)
 int memcmp16(const void *a, const void *b)
 {
 	return memcmp(a, b, 16);
+}
+
+static long double per_second(long double quantity, long double elapsed_seconds)
+{
+	return quantity / elapsed_seconds;
 }
 
 #include <fcntl.h>
@@ -273,7 +280,9 @@ int main(int argc, char **argv)
 	clock_gettime(clockid, &ts_final);
 	long double elapsed = elapsed_ts(ts_begin, ts_final);
 	long double percall = (elapsed / ts_len);
-	printf("\n\t\tdone in %.9LF seconds (~%.9LF per).\n", elapsed, percall);
+	printf("\n\t\tdone in %.9LF seconds\n"
+	       "\t\t\t(~%.9LF each, %.0LF per second).\n", elapsed, percall,
+	       per_second(ts_len, elapsed));
 
 	free(ts_contexts);
 	ts_contexts = NULL;
@@ -303,7 +312,7 @@ int main(int argc, char **argv)
 		       ts[i].tv_nsec);
 	}
 
-	size_t uuids_per_thread_len = 1000;
+	size_t uuids_per_thread_len = (10 * 1000);
 	size_t uuid7_bytes = 16;
 	size_t uuids_per_thread_size = uuids_per_thread_len * uuid7_bytes;
 	size_t uuids_len = uuids_per_thread_len * num_threads;
@@ -350,28 +359,77 @@ int main(int argc, char **argv)
 	clock_gettime(clockid, &ts_final);
 	elapsed = elapsed_ts(ts_begin, ts_final);
 	percall = (elapsed / uuids_len);
-	printf("\n\tdone in %.9LF seconds (~%.9LF per).\n", elapsed, percall);
+	printf("\n\tdone in %.9LF seconds (~%.9LF each, %.0LF per second).\n",
+	       elapsed, percall, per_second(uuids_len, elapsed));
 
+	size_t max_retries = 0;
+	for (size_t i = 0; i < num_threads; ++i) {
+		if (uuid7_tasks[i].retries > max_retries) {
+			max_retries = uuid7_tasks[i].retries;
+		}
+	}
+	if (max_retries > 0) {
+		printf("\t(max_retries: %zu)\n", max_retries);
+	}
 	free(uuid7_tasks);
 
 	qsort(uuid7s, uuids_len, uuid7_bytes, memcmp16);
 
-	size_t found = 0;
+	/* absolute duplicate */
+	size_t same16 = 0;
+	/* only last 4 random bytes differ */
+	size_t same12 = 0;
+	/* same nanos and sequence; differ by "segment" and "random" */
+	size_t same10 = 0;
+	/* same nanos; differ by sequence, segment, random */
+	size_t same9 = 0;
 	size_t display_start = 0;
-	for (size_t i = 1; !found && i < uuids_len; ++i) {
+	size_t display_start_reason = 0;
+	for (size_t i = uuids_len - 1; i > 2; --i) {
 		size_t offset_a = (i - 1) * uuid7_bytes;
 		size_t offset_b = i * uuid7_bytes;
 		uint8_t *a = uuid7s + offset_a;
 		uint8_t *b = uuid7s + offset_b;
 
-		if (memcmp(a, b, 9) == 0) {
-			display_start = (i - 1);
-			found = 1;
+		if (memcmp(a, b, 16) == 0) {
+			++same16;
+			display_start = i - 1;
+			display_start_reason = 16;
+		} else if (memcmp(a, b, 12) == 0) {
+			++same12;
+			if (display_start_reason <= 12) {
+				display_start = i - 1;
+				display_start_reason = 12;
+			}
+		} else if (memcmp(a, b, 10) == 0) {
+			++same10;
+			if (display_start_reason <= 10) {
+				display_start = i - 1;
+				display_start_reason = 10;
+			}
+		} else if (memcmp(a, b, 9) == 0) {
+			++same9;
+			if (display_start_reason <= 9) {
+				display_start = i - 1;
+				display_start_reason = 9;
+			}
 		}
 	}
+	printf(" UUIDs with overlaps with at least one other entry...\n");
+	printf("%9zu (%04.1f%%) true duplicates\n", same16,
+	       100 * (same16 * 1.0) / uuids_len);
+	printf("%9zu (%04.1f%%)"
+	       " same nanos, sequence, segment, differ only by 4 random bytes\n",
+	       same12, 100 * (same12 * 1.0) / uuids_len);
+	printf("%9zu (%04.1f%%)"
+	       " same nanos, sequence, differ only by segment, random bytes\n",
+	       same10, 100 * (same10 * 1.0) / uuids_len);
+	printf("%9zu (%04.1f%%)"
+	       " same nanos, differ by sequence, segment, random bytes\n",
+	       same9, 100 * (same9 * 1.0) / uuids_len);
 
-	if (display_start + subset > uuids_len) {
-		display_start = uuids_len - subset;
+	if (display_start + subset >= uuids_len) {
+		display_start = uuids_len - (subset + 1);
 	}
 	size_t display_max = display_start + subset;
 
