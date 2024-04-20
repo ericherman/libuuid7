@@ -24,13 +24,13 @@ Threads
 -------
 
 In order to provide the sequence number for a UUID, the last time and last
-sequence are stored in a global variable.
+sequence are stored in a thread_local variable.
 
-In a multi-threaded program, it's important to ensure that these values are
-accessed in a thread-safe fashion.
+If compiled with UUID7_WITH_MUTEX, then this data is stored in a global
+variable, and mutex protected.
 
-Unless compiled with -DUUID7_SKIP_MUTEX, thread-safety can be achieved by
-first calling:
+If compiled with UUID7_WITH_MUTEX, before any calls to uuid7, the mutex
+must be initialized, by calling:
 
 	uuid7_mutex_init();
 
@@ -40,7 +40,8 @@ The mutex destructor is:
 
 	 uuid7_mutex_destroy();
 
-In a single threaded environment, these may be skipped.
+In a single threaded environment, it can be compiled with UUID7_NO_THREADS,
+to avoid both the thread_local and the mutex.
 
 License
 -------
