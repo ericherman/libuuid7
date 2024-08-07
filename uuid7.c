@@ -71,6 +71,18 @@ uint8_t uuid7_last[16] = {
 };
 
 /*
+   takes a uint64_t and returns uint16_t
+   return value is computed by breaking the 64-bit input
+   into four 16-bit blocks and XORing the blocks together.
+*/
+#define u16_from_u64_xor(in) \
+	((uint16_t)(	((in >> (16 * 3)) & 0xFFFF) \
+		^	((in >> (16 * 2)) & 0xFFFF) \
+		^	((in >> (16 * 1)) & 0xFFFF) \
+		^	((in >> (16 * 0)) & 0xFFFF) \
+	))
+
+/*
    If the clock has gone backwards in time by a large amount,
    the system may not catch up in a reasonable time, and thus
    it may be more desirable to generate UUIDs that would sort
@@ -279,10 +291,7 @@ uint8_t *uuid7(uint8_t *ubuf)
 	uint16_t segment = (uint16_t)(random_bytes >> (4 * 8));
 #else
 	/* segment by address of thread_local */
-	uint16_t segment = 0;
-	for (size_t i = 1; i < (sizeof(uintptr_t) / 2); ++i) {
-		segment = segment ^ (((uintptr_t) uuid7_last) >> (16 * i));
-	}
+	uint16_t segment = u16_from_u64_xor((uint64_t) uuid7_last);
 #endif
 
 	uint32_t rand32 = (0xFFFFFFFF & random_bytes);
